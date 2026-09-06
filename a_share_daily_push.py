@@ -434,13 +434,11 @@ def generate_midday_report(index_data, breadth, sectors):
 
 
 def generate_close_report(index_data, breadth, sectors, tech_levels):
-    """生成收盘总结战报（参考588780战报风格：简洁清晰大气）"""
+    """生成收盘总结战报（结构化数据，用于多组件卡片布局）"""
     today = datetime.datetime.now().strftime("%Y-%m-%d")
     weekday = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][datetime.datetime.now().weekday()]
 
     sh = index_data.get("上证指数", {"close": 0, "change_pct": 0})
-    sz = index_data.get("深证成指", {"close": 0, "change_pct": 0})
-    cyb = index_data.get("创业板指", {"close": 0, "change_pct": 0})
     title = "A股大盘每日战报"
     subtitle = f"{today} {weekday} · 收盘总结 · 数据截至当日收盘"
 
@@ -489,6 +487,34 @@ def generate_close_report(index_data, breadth, sectors, tech_levels):
     else:
         market_judge = f"窄幅震荡 · 上涨{breadth['up_count']}家/下跌{breadth['down_count']}家 · 观望为主，等待方向"
 
+    # 返回结构化数据
+    report_data = {
+        "title": title,
+        "subtitle": subtitle,
+        "template": template,
+        "status": status,
+        "core_metrics": [
+            {"label": "上证指数", "sub_label": "收盘价", "value": f"{sh['close']:.2f}"},
+            {"label": "日涨跌幅", "sub_label": "今日", "value": f"{sh['change_pct']:+.2f}%"},
+            {"label": "两市成交", "sub_label": "今日", "value": amount_str},
+        ],
+        "market_judge": market_judge,
+        "key_levels": [
+            {"label": "第一支撑", "value": f"{s1:.0f} 点", "change": f"{(s1/sh['close']-1)*100:+.1f}%"},
+            {"label": "强支撑", "value": f"{s2:.0f} 点", "change": f"{(s2/sh['close']-1)*100:+.1f}%"},
+            {"label": "压力位", "value": f"{r1:.0f} 点", "change": f"{(r1/sh['close']-1)*100:+.1f}%"},
+        ],
+        "technical": f"MA20({ma20:.0f}) / MA60({ma60:.0f}) → {ma_status}",
+        "sectors_top": top_text,
+        "sectors_bottom": bottom_text,
+        "news_domestic": "待补充（可接入财经新闻API）",
+        "news_foreign": "待补充（可接入外围市场数据）",
+        "tomorrow_watch": "关注量能是否持续 · 关键支撑位得失 · 外围市场变化",
+        "doc_link": f"[每日信息栏_{today}](https://a13cyu3qqeo.feishu.cn/drive/folder/HPxrfEmHdlsfuqdbXc9cMJy2ndc)",
+        "risk_warning": "本战报仅用于研究与模型校准，不构成投资建议。",
+    }
+
+    # 同时保留markdown格式（用于兼容）
     content = f"""{status}
 
 | 上证指数 | 日涨跌幅 | 两市成交 |
@@ -507,24 +533,25 @@ def generate_close_report(index_data, breadth, sectors, tech_levels):
 | {(s1/sh['close']-1)*100:+.1f}% | {(s2/sh['close']-1)*100:+.1f}% | {(r1/sh['close']-1)*100:+.1f}% |
 
 📊 **技术面**
-MA20({ma20:.0f}) / MA60({ma60:.0f}) → {ma_status}
+{ma_status}
 
 🏭 **板块异动**
 **领涨**：{top_text}
 **领跌**：{bottom_text}
 
 🌐 **消息面**
-国内：待补充（可接入财经新闻API）
-国外：待补充（可接入外围市场数据）
+国内：{report_data['news_domestic']}
+国外：{report_data['news_foreign']}
 
 📝 **明日观察**
-关注量能是否持续 · 关键支撑位得失 · 外围市场变化
+{report_data['tomorrow_watch']}
 
 ---
-详细战报已归档云文档：[每日信息栏_{today}](https://a13cyu3qqeo.feishu.cn/drive/folder/HPxrfEmHdlsfuqdbXc9cMJy2ndc)
+详细战报已归档云文档：{report_data['doc_link']}
 
-⚠️ 本战报仅用于研究与模型校准，不构成投资建议。"""
-    return title, subtitle, template, content
+⚠️ {report_data['risk_warning']}"""
+
+    return title, subtitle, template, content, report_data
 
 
 # ============================================================
@@ -532,10 +559,9 @@ MA20({ma20:.0f}) / MA60({ma60:.0f}) → {ma_status}
 # ============================================================
 
 def send_to_feishu(webhook_url, title, subtitle, template, content):
-    """通过飞书自定义机器人Webhook发送交互卡片"""
+    """通过飞书自定义机器人Webhook发送交互卡片（单markdown组件，兼容旧版）"""
     # 飞书自定义关键词校验：消息内容必须包含关键词"A股大盘战报推送"
     keyword = "A股大盘战报推送"
-    # 在内容开头添加关键词标签（确保通过关键词校验）
     content_with_keyword = f"**【{keyword}】**\n\n{content}"
 
     payload = {
@@ -563,6 +589,163 @@ def send_to_feishu(webhook_url, title, subtitle, template, content):
         result = resp.json()
         if result.get("code") == 0 or result.get("StatusCode") == 0:
             print(f"✅ 飞书推送成功: {title}")
+            return True
+        else:
+            print(f"❌ 飞书推送失败: {result}")
+            return False
+    except Exception as e:
+        print(f"❌ 飞书推送异常: {e}")
+        return False
+
+
+def send_to_feishu_structured(webhook_url, report_data):
+    """通过飞书自定义机器人Webhook发送结构化多组件卡片（参考588780战报风格）"""
+    keyword = "A股大盘战报推送"
+
+    # 构建多组件卡片
+    elements = []
+
+    # 1. 关键词标签（确保通过关键词校验）
+    elements.append({
+        "tag": "markdown",
+        "content": f"**【{keyword}】** {report_data.get('status', '')}"
+    })
+
+    # 2. 核心指标三列布局
+    core_metrics = report_data.get("core_metrics", [])
+    if core_metrics:
+        columns = []
+        for metric in core_metrics:
+            columns.append({
+                "tag": "column",
+                "width": "weighted",
+                "weight": 1,
+                "vertical_align": "top",
+                "elements": [
+                    {"tag": "markdown", "content": f"**{metric['label']}**\n{metric.get('sub_label', '')}"},
+                    {"tag": "markdown", "content": f"**{metric['value']}**"},
+                ]
+            })
+        elements.append({
+            "tag": "column_set",
+            "flex_mode": "none",
+            "background_style": "grey",
+            "columns": columns
+        })
+
+    # 3. 分隔线
+    elements.append({"tag": "hr"})
+
+    # 4. 市场判断
+    if report_data.get("market_judge"):
+        elements.append({
+            "tag": "markdown",
+            "content": f"🎯 **市场判断**\n{report_data['market_judge']}"
+        })
+
+    # 5. 分隔线
+    elements.append({"tag": "hr"})
+
+    # 6. 关键价位三列布局
+    key_levels = report_data.get("key_levels", [])
+    if key_levels:
+        columns = []
+        for level in key_levels:
+            columns.append({
+                "tag": "column",
+                "width": "weighted",
+                "weight": 1,
+                "vertical_align": "top",
+                "elements": [
+                    {"tag": "markdown", "content": f"**{level['label']}**"},
+                    {"tag": "markdown", "content": f"**{level['value']}**"},
+                    {"tag": "markdown", "content": f"{level['change']}"},
+                ]
+            })
+        elements.append({
+            "tag": "column_set",
+            "flex_mode": "none",
+            "background_style": "grey",
+            "columns": columns
+        })
+
+    # 7. 分隔线
+    elements.append({"tag": "hr"})
+
+    # 8. 技术面
+    if report_data.get("technical"):
+        elements.append({
+            "tag": "markdown",
+            "content": f"📊 **技术面**\n{report_data['technical']}"
+        })
+
+    # 9. 分隔线
+    elements.append({"tag": "hr"})
+
+    # 10. 板块异动
+    if report_data.get("sectors_top") or report_data.get("sectors_bottom"):
+        sectors_text = "🏭 **板块异动**\n"
+        if report_data.get("sectors_top"):
+            sectors_text += f"**领涨**：{report_data['sectors_top']}\n"
+        if report_data.get("sectors_bottom"):
+            sectors_text += f"**领跌**：{report_data['sectors_bottom']}"
+        elements.append({"tag": "markdown", "content": sectors_text})
+
+    # 11. 分隔线
+    elements.append({"tag": "hr"})
+
+    # 12. 消息面
+    if report_data.get("news_domestic") or report_data.get("news_foreign"):
+        news_text = "🌐 **消息面**\n"
+        if report_data.get("news_domestic"):
+            news_text += f"国内：{report_data['news_domestic']}\n"
+        if report_data.get("news_foreign"):
+            news_text += f"国外：{report_data['news_foreign']}"
+        elements.append({"tag": "markdown", "content": news_text})
+
+    # 13. 分隔线
+    elements.append({"tag": "hr"})
+
+    # 14. 明日观察
+    if report_data.get("tomorrow_watch"):
+        elements.append({
+            "tag": "markdown",
+            "content": f"📝 **明日观察**\n{report_data['tomorrow_watch']}"
+        })
+
+    # 15. 分隔线
+    elements.append({"tag": "hr"})
+
+    # 16. 云文档链接和风险提示
+    footer_text = ""
+    if report_data.get("doc_link"):
+        footer_text += f"详细战报已归档云文档：{report_data['doc_link']}\n\n"
+    if report_data.get("risk_warning"):
+        footer_text += f"⚠️ {report_data['risk_warning']}"
+    if footer_text:
+        elements.append({"tag": "markdown", "content": footer_text})
+
+    # 构建完整卡片
+    payload = {
+        "msg_type": "interactive",
+        "card": {
+            "config": {"wide_screen_mode": True},
+            "header": {
+                "title": {"tag": "plain_text", "content": report_data.get("title", "A股大盘每日战报")},
+                "subtitle": {"tag": "plain_text", "content": report_data.get("subtitle", "")},
+                "template": report_data.get("template", "blue"),
+            },
+            "elements": elements,
+        },
+    }
+
+    headers = {"Content-Type": "application/json"}
+
+    try:
+        resp = requests.post(webhook_url, json=payload, headers=headers, timeout=15)
+        result = resp.json()
+        if result.get("code") == 0 or result.get("StatusCode") == 0:
+            print(f"✅ 飞书推送成功(多组件): {report_data.get('title')}")
             return True
         else:
             print(f"❌ 飞书推送失败: {result}")
@@ -611,14 +794,19 @@ def main():
     print("📝 生成战报内容...")
     if args.period == "morning":
         title, subtitle, template, content = generate_morning_report(index_data, breadth, sectors)
+        # 发送飞书（单组件兼容版）
+        print("🚀 推送到飞书...")
+        success = send_to_feishu(webhook_url, title, subtitle, template, content)
     elif args.period == "midday":
         title, subtitle, template, content = generate_midday_report(index_data, breadth, sectors)
+        # 发送飞书（单组件兼容版）
+        print("🚀 推送到飞书...")
+        success = send_to_feishu(webhook_url, title, subtitle, template, content)
     else:
-        title, subtitle, template, content = generate_close_report(index_data, breadth, sectors, tech_levels)
-
-    # 发送飞书
-    print("🚀 推送到飞书...")
-    success = send_to_feishu(webhook_url, title, subtitle, template, content)
+        # 收盘战报使用结构化多组件卡片
+        title, subtitle, template, content, report_data = generate_close_report(index_data, breadth, sectors, tech_levels)
+        print("🚀 推送到飞书(多组件卡片)...")
+        success = send_to_feishu_structured(webhook_url, report_data)
 
     if success:
         print("✅ 全部完成!")
