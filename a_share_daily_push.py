@@ -309,12 +309,12 @@ def calculate_technical_levels(close_price, index_name="上证指数"):
 # ============================================================
 
 def generate_morning_report(index_data, breadth, sectors):
-    """生成开盘前预期战报"""
+    """生成开盘前预期战报（参考588780战报风格）"""
     today = datetime.datetime.now().strftime("%Y-%m-%d")
     weekday = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][datetime.datetime.now().weekday()]
 
     sh = index_data.get("上证指数", {"close": 0, "change_pct": 0})
-    title = "🌅 A股大盘 今日预期"
+    title = "A股大盘每日战报"
     subtitle = f"{today} {weekday} · 开盘前预判 · 基于昨日收盘"
 
     # 状态判断
@@ -328,49 +328,52 @@ def generate_morning_report(index_data, breadth, sectors):
         status = "「中性 Neutral」"
         template = "blue"
 
-    content = f"""
-{status}
-**上证指数**
-昨收
-**{sh['close']:.2f}**
+    # 成交额单位转换
+    amount_yi = breadth['total_amount'] / 1e8
+    if amount_yi >= 10000:
+        amount_str = f"{amount_yi/10000:.2f}万亿"
+    else:
+        amount_str = f"{amount_yi:.0f}亿"
 
-**昨日涨跌**
-涨跌幅
-**{sh['change_pct']:+.2f}%**
+    content = f"""{status}
 
-**两市成交**
-昨日
-**{breadth['total_amount']/1e8:.0f}亿**
-**🎯 今日预判**
+| 上证指数 | 昨日涨跌 | 两市成交 |
+|:---:|:---:|:---:|
+| 昨收 | 涨跌幅 | 昨日 |
+| **{sh['close']:.2f}** | **{sh['change_pct']:+.2f}%** | **{amount_str}** |
+
+🎯 **今日预判**
 基于昨日收盘数据与技术面，今日大概率{status.replace('「', '').replace('」', '')}走势。
 重点关注开盘30分钟量能变化与北向资金流向。
-**📍 关键价位**
-**第一支撑**
-{sh['close']*0.995:.0f} 点
--0.5%
 
-**强支撑**
-{sh['close']*0.98:.0f} 点
--2.0%
+📍 **关键价位**
 
-**压力位**
-{sh['close']*1.01:.0f} 点
-+1.0%
-**📊 技术面**
+| 第一支撑 | 强支撑 | 压力位 |
+|:---:|:---:|:---:|
+| {sh['close']*0.995:.0f} 点 | {sh['close']*0.98:.0f} 点 | {sh['close']*1.01:.0f} 点 |
+| -0.5% | -2.0% | +1.0% |
+
+📊 **技术面**
 MA20参考位 · 关注开盘是否站稳均线 · 量能是否放大
-**⚠️ 风险提示**
-本预判基于历史数据，不构成投资建议。股市有风险，投资需谨慎。
-"""
+
+🌐 **消息面**
+国内：待补充
+国外：待补充
+
+---
+详细战报已归档云文档：[每日信息栏_{today}](https://a13cyu3qqeo.feishu.cn/drive/folder/HPxrfEmHdlsfuqdbXc9cMJy2ndc)
+
+⚠️ 本预判基于历史数据，不构成投资建议。股市有风险，投资需谨慎。"""
     return title, subtitle, template, content
 
 
 def generate_midday_report(index_data, breadth, sectors):
-    """生成盘中战报（14:30）"""
+    """生成盘中战报（14:30，参考588780战报风格）"""
     today = datetime.datetime.now().strftime("%Y-%m-%d")
     weekday = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][datetime.datetime.now().weekday()]
 
     sh = index_data.get("上证指数", {"close": 0, "change_pct": 0})
-    title = "⚡ A股大盘 盘中战报"
+    title = "A股大盘每日战报"
     subtitle = f"{today} {weekday} · 14:30盘中实时 · 数据截至当前"
 
     # 状态判断
@@ -385,54 +388,60 @@ def generate_midday_report(index_data, breadth, sectors):
         template = "blue"
 
     # 板块信息
-    top_text = "、".join([f"{n}({v:+.1f}%)" for n, v in sectors.get("top", [])]) or "待更新"
-    bottom_text = "、".join([f"{n}({v:+.1f}%)" for n, v in sectors.get("bottom", [])]) or "待更新"
+    top_text = "、".join([f"{n}({v:+.1f}%)" for n, v in sectors.get("top", [])[:3]]) or "待更新"
+    bottom_text = "、".join([f"{n}({v:+.1f}%)" for n, v in sectors.get("bottom", [])[:3]]) or "待更新"
 
-    content = f"""
-{status}
-**上证指数**
-当前
-**{sh['close']:.2f}**
+    # 成交额单位转换
+    amount_yi = breadth['total_amount'] / 1e8
+    if amount_yi >= 10000:
+        amount_str = f"{amount_yi/10000:.2f}万亿"
+    else:
+        amount_str = f"{amount_yi:.0f}亿"
 
-**日涨跌幅**
-今日
-**{sh['change_pct']:+.2f}%**
+    content = f"""{status}
 
-**两市成交**
-截至当前
-**{breadth['total_amount']/1e8:.0f}亿**
-**🎯 盘中判断**
+| 上证指数 | 日涨跌幅 | 两市成交 |
+|:---:|:---:|:---:|
+| 当前 | 今日 | 截至当前 |
+| **{sh['close']:.2f}** | **{sh['change_pct']:+.2f}%** | **{amount_str}** |
+
+🎯 **盘中判断**
 {status} · 上涨{breadth['up_count']}家 / 下跌{breadth['down_count']}家
-**📍 关键价位**
-**第一支撑**
-{sh['close']*0.995:.0f} 点
--0.5%
 
-**强支撑**
-{sh['close']*0.98:.0f} 点
--2.0%
+📍 **关键价位**
 
-**压力位**
-{sh['close']*1.01:.0f} 点
-+1.0%
-**📊 技术面**
+| 第一支撑 | 强支撑 | 压力位 |
+|:---:|:---:|:---:|
+| {sh['close']*0.995:.0f} 点 | {sh['close']*0.98:.0f} 点 | {sh['close']*1.01:.0f} 点 |
+| -0.5% | -2.0% | +1.0% |
+
+📊 **技术面**
 关注尾盘30分钟量能变化 · 是否站稳关键均线
-**🏭 板块异动**
+
+🏭 **板块异动**
 **领涨**：{top_text}
 **领跌**：{bottom_text}
-**⚠️ 风险提示**
-本战报仅用于研究与模型校准，不构成投资建议。
-"""
+
+🌐 **消息面**
+国内：待补充
+国外：待补充
+
+---
+详细战报已归档云文档：[每日信息栏_{today}](https://a13cyu3qqeo.feishu.cn/drive/folder/HPxrfEmHdlsfuqdbXc9cMJy2ndc)
+
+⚠️ 本战报仅用于研究与模型校准，不构成投资建议。"""
     return title, subtitle, template, content
 
 
 def generate_close_report(index_data, breadth, sectors, tech_levels):
-    """生成收盘总结战报"""
+    """生成收盘总结战报（参考588780战报风格：简洁清晰大气）"""
     today = datetime.datetime.now().strftime("%Y-%m-%d")
     weekday = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][datetime.datetime.now().weekday()]
 
     sh = index_data.get("上证指数", {"close": 0, "change_pct": 0})
-    title = "📊 A股大盘 每日战报"
+    sz = index_data.get("深证成指", {"close": 0, "change_pct": 0})
+    cyb = index_data.get("创业板指", {"close": 0, "change_pct": 0})
+    title = "A股大盘每日战报"
     subtitle = f"{today} {weekday} · 收盘总结 · 数据截至当日收盘"
 
     # 状态判断
@@ -447,8 +456,8 @@ def generate_close_report(index_data, breadth, sectors, tech_levels):
         template = "blue"
 
     # 板块信息
-    top_text = "、".join([f"{n}({v:+.1f}%)" for n, v in sectors.get("top", [])]) or "待更新"
-    bottom_text = "、".join([f"{n}({v:+.1f}%)" for n, v in sectors.get("bottom", [])]) or "待更新"
+    top_text = "、".join([f"{n}({v:+.1f}%)" for n, v in sectors.get("top", [])[:3]]) or "待更新"
+    bottom_text = "、".join([f"{n}({v:+.1f}%)" for n, v in sectors.get("bottom", [])[:3]]) or "待更新"
 
     # 技术位
     s1 = tech_levels.get("support1", sh["close"] * 0.99)
@@ -465,43 +474,56 @@ def generate_close_report(index_data, breadth, sectors, tech_levels):
     else:
         ma_status = "交叉整理"
 
-    content = f"""
-{status}
-**上证指数**
-收盘价
-**{sh['close']:.2f}**
+    # 成交额单位转换
+    amount_yi = breadth['total_amount'] / 1e8
+    if amount_yi >= 10000:
+        amount_str = f"{amount_yi/10000:.2f}万亿"
+    else:
+        amount_str = f"{amount_yi:.0f}亿"
 
-**日涨跌幅**
-今日
-**{sh['change_pct']:+.2f}%**
+    # 市场判断一句话
+    if sh["change_pct"] < -0.5:
+        market_judge = f"放量下跌 · 上涨{breadth['up_count']}家/下跌{breadth['down_count']}家 · 偏防御，控制仓位"
+    elif sh["change_pct"] > 0.5:
+        market_judge = f"放量上涨 · 上涨{breadth['up_count']}家/下跌{breadth['down_count']}家 · 偏积极，关注持续性"
+    else:
+        market_judge = f"窄幅震荡 · 上涨{breadth['up_count']}家/下跌{breadth['down_count']}家 · 观望为主，等待方向"
 
-**两市成交**
-今日
-**{breadth['total_amount']/1e8:.0f}亿**
-**🎯 市场判断**
-{status} · 上涨{breadth['up_count']}家 / 下跌{breadth['down_count']}家
-**📍 关键价位**
-**第一支撑**
-{s1:.0f} 点
-{(s1/sh['close']-1)*100:+.1f}%
+    content = f"""{status}
 
-**强支撑**
-{s2:.0f} 点
-{(s2/sh['close']-1)*100:+.1f}%
+| 上证指数 | 日涨跌幅 | 两市成交 |
+|:---:|:---:|:---:|
+| 收盘价 | 今日 | 今日 |
+| **{sh['close']:.2f}** | **{sh['change_pct']:+.2f}%** | **{amount_str}** |
 
-**压力位**
-{r1:.0f} 点
-{(r1/sh['close']-1)*100:+.1f}%
-**📊 技术面**
+🎯 **市场判断**
+{market_judge}
+
+📍 **关键价位**
+
+| 第一支撑 | 强支撑 | 压力位 |
+|:---:|:---:|:---:|
+| {s1:.0f} 点 | {s2:.0f} 点 | {r1:.0f} 点 |
+| {(s1/sh['close']-1)*100:+.1f}% | {(s2/sh['close']-1)*100:+.1f}% | {(r1/sh['close']-1)*100:+.1f}% |
+
+📊 **技术面**
 MA20({ma20:.0f}) / MA60({ma60:.0f}) → {ma_status}
-**🏭 板块异动**
+
+🏭 **板块异动**
 **领涨**：{top_text}
 **领跌**：{bottom_text}
-**📝 明日观察**
+
+🌐 **消息面**
+国内：待补充（可接入财经新闻API）
+国外：待补充（可接入外围市场数据）
+
+📝 **明日观察**
 关注量能是否持续 · 关键支撑位得失 · 外围市场变化
-**⚠️ 风险提示**
-本战报仅用于研究与模型校准，不构成投资建议。股市有风险，投资需谨慎。
-"""
+
+---
+详细战报已归档云文档：[每日信息栏_{today}](https://a13cyu3qqeo.feishu.cn/drive/folder/HPxrfEmHdlsfuqdbXc9cMJy2ndc)
+
+⚠️ 本战报仅用于研究与模型校准，不构成投资建议。"""
     return title, subtitle, template, content
 
 
