@@ -211,6 +211,57 @@ def fetch_sector_performance():
     return {"top": [], "bottom": []}
 
 
+def fetch_news():
+    """采集财经新闻（财联社电报为主，新浪财经备用）"""
+    domestic_news = []
+    foreign_news = []
+
+    # 优先使用财联社电报（准确、及时、权威）
+    try:
+        import akshare as ak
+        df = ak.stock_info_global_cls(symbol="全部")
+        if df is not None and len(df) > 0:
+            # 筛选最近的新闻，区分国内国际
+            for _, row in df.head(10).iterrows():
+                title = str(row.get("标题", "")).strip()
+                pub_time = str(row.get("发布时间", "")).strip()
+                if not title:
+                    continue
+                # 简单分类：包含国际关键词的归为国外，其他归为国内
+                foreign_keywords = ["美国", "美联储", "美股", "欧洲", "欧盟", "日本", "韩国", "印度", "俄罗斯", "乌克兰", "以色列", "伊朗", "沙特", "OPEC", "原油", "黄金", "美元", "欧元", "英镑", "全球", "国际", "海外", "外资", "北向", "地缘", "冲突", "战争", "制裁", "关税", "贸易战"]
+                is_foreign = any(kw in title for kw in foreign_keywords)
+                news_item = f"[{pub_time}] {title}"
+                if is_foreign and len(foreign_news) < 3:
+                    foreign_news.append(news_item)
+                elif not is_foreign and len(domestic_news) < 3:
+                    domestic_news.append(news_item)
+            print(f"  消息面数据源: 财联社电报 (国内{len(domestic_news)}条/国外{len(foreign_news)}条)")
+            return {"domestic": domestic_news, "foreign": foreign_news}
+    except Exception as e:
+        print(f"  财联社电报获取失败: {e}")
+
+    # 备用：新浪财经新闻
+    try:
+        import akshare as ak
+        df = ak.stock_news_em(symbol="全部")
+        if df is not None and len(df) > 0:
+            for _, row in df.head(6).iterrows():
+                title = str(row.get("新闻标题", "")).strip()
+                pub_time = str(row.get("发布时间", "")).strip()
+                if not title:
+                    continue
+                news_item = f"[{pub_time}] {title}"
+                if len(domestic_news) < 3:
+                    domestic_news.append(news_item)
+            print(f"  消息面数据源: 新浪财经(备用)")
+            return {"domestic": domestic_news, "foreign": foreign_news}
+    except Exception as e:
+        print(f"  新浪财经新闻获取失败: {e}")
+
+    print("  消息面数据源: 全部失败，返回空")
+    return {"domestic": [], "foreign": []}
+
+
 def calculate_technical_levels(close_price, index_name="上证指数"):
     """计算关键支撑压力位（同花顺接口为主）"""
     # 指数代码映射
@@ -433,7 +484,7 @@ def generate_midday_report(index_data, breadth, sectors):
     return title, subtitle, template, content
 
 
-def generate_close_report(index_data, breadth, sectors, tech_levels):
+def generate_close_report(index_data, breadth, sectors, tech_levels, news=None):
     """生成收盘总结战报（结构化数据，用于多组件卡片布局）"""
     today = datetime.datetime.now().strftime("%Y-%m-%d")
     weekday = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][datetime.datetime.now().weekday()]
@@ -487,6 +538,16 @@ def generate_close_report(index_data, breadth, sectors, tech_levels):
     else:
         market_judge = f"窄幅震荡 · 上涨{breadth['up_count']}家/下跌{breadth['down_count']}家 · 观望为主，等待方向"
 
+    # 消息面数据
+    if news:
+        domestic_list = news.get("domestic", [])
+        foreign_list = news.get("foreign", [])
+        news_domestic = "\n".join([f"• {item}" for item in domestic_list]) if domestic_list else "暂无重要国内新闻"
+        news_foreign = "\n".join([f"• {item}" for item in foreign_list]) if foreign_list else "暂无重要国际新闻"
+    else:
+        news_domestic = "待补充"
+        news_foreign = "待补充"
+
     # 返回结构化数据
     report_data = {
         "title": title,
@@ -507,8 +568,8 @@ def generate_close_report(index_data, breadth, sectors, tech_levels):
         "technical": f"MA20({ma20:.0f}) / MA60({ma60:.0f}) → {ma_status}",
         "sectors_top": top_text,
         "sectors_bottom": bottom_text,
-        "news_domestic": "待补充（可接入财经新闻API）",
-        "news_foreign": "待补充（可接入外围市场数据）",
+        "news_domestic": news_domestic,
+        "news_foreign": news_foreign,
         "tomorrow_watch": "关注量能是否持续 · 关键支撑位得失 · 外围市场变化",
         "doc_link": f"[每日信息栏_{today}](https://a13cyu3qqeo.feishu.cn/drive/folder/HPxrfEmHdlsfuqdbXc9cMJy2ndc)",
         "risk_warning": "本战报仅用于研究与模型校准，不构成投资建议。",
@@ -783,6 +844,10 @@ def main():
     sectors = fetch_sector_performance()
     print(f"  板块数据: 领涨{len(sectors['top'])}个 / 领跌{len(sectors['bottom'])}个")
 
+    # 采集消息面数据
+    news = fetch_news()
+    print(f"  消息面: 国内{len(news['domestic'])}条 / 国外{len(news['foreign'])}条")
+
     # 计算技术位（仅收盘战报）
     tech_levels = {}
     if args.period == "close":
@@ -804,7 +869,7 @@ def main():
         success = send_to_feishu(webhook_url, title, subtitle, template, content)
     else:
         # 收盘战报使用结构化多组件卡片
-        title, subtitle, template, content, report_data = generate_close_report(index_data, breadth, sectors, tech_levels)
+        title, subtitle, template, content, report_data = generate_close_report(index_data, breadth, sectors, tech_levels, news)
         print("🚀 推送到飞书(多组件卡片)...")
         success = send_to_feishu_structured(webhook_url, report_data)
 
