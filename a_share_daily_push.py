@@ -511,8 +511,10 @@ MA20({ma20:.0f}) / MA60({ma60:.0f}) → {ma_status}
 
 def send_to_feishu(webhook_url, title, subtitle, template, content):
     """通过飞书自定义机器人Webhook发送交互卡片"""
-    # 构造飞书卡片（使用card简写格式，与588780战报一致）
-    card_xml = f'<card title="{title}" subtitle="{subtitle}">\n{content}\n</card>'
+    # 飞书自定义关键词校验：消息内容必须包含关键词"A股大盘战报推送"
+    keyword = "A股大盘战报推送"
+    # 在内容开头添加关键词标签（确保通过关键词校验）
+    content_with_keyword = f"**【{keyword}】**\n\n{content}"
 
     payload = {
         "msg_type": "interactive",
@@ -526,7 +528,7 @@ def send_to_feishu(webhook_url, title, subtitle, template, content):
             "elements": [
                 {
                     "tag": "markdown",
-                    "content": content,
+                    "content": content_with_keyword,
                 }
             ],
         },
