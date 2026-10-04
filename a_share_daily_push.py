@@ -1113,6 +1113,32 @@ def send_to_feishu_structured(webhook_url, report_data):
 
 
 # ============================================================
+# 交易日校验（防止周末/假期误推）
+# ============================================================
+
+def is_trading_day():
+    """判断北京时间今天是否为A股交易日。返回(是否交易日, 北京日期字符串)"""
+    # GitHub Actions运行在UTC时区，需转换为北京时间(UTC+8)
+    bj_now = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=8)
+    today_str = bj_now.strftime("%Y-%m-%d")
+    try:
+        import akshare as ak
+        cal = ak.tool_trade_date_hist_sina()
+        # trade_date列可能是date/datetime/字符串
+        trade_dates = set()
+        for d in cal["trade_date"]:
+            try:
+                trade_dates.add(pd.Timestamp(d).strftime("%Y-%m-%d"))
+            except Exception:
+                continue
+        return (today_str in trade_dates), today_str
+    except Exception as e:
+        # 交易日历获取失败时，退化为周末判断（周一=0...周日=6）
+        print(f"⚠️ 交易日历获取失败({e})，退化为周末判断")
+        return (bj_now.weekday() < 5), today_str
+
+
+# ============================================================
 # 第四部分：主流程
 # ============================================================
 
@@ -1128,7 +1154,13 @@ def main():
         print("❌ 错误: 未设置FEISHU_WEBHOOK环境变量")
         sys.exit(1)
 
-    print(f"📡 开始采集数据 (时段: {args.period})...")
+    # 交易日校验：非交易日（周末/法定节假日）直接退出，不推送
+    trading, today_str = is_trading_day()
+    if not trading:
+        print(f"📴 {today_str} 非A股交易日（周末/节假日），跳过推送")
+        sys.exit(0)
+
+    print(f"📡 开始采集数据 (日期: {today_str}, 时段: {args.period})...")
 
     # 采集数据
     index_data = fetch_index_data()
