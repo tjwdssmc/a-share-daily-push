@@ -679,25 +679,26 @@ def generate_midday_report(index_data, breadth, sectors, score=50, band='🟡黄
     return title, subtitle, template, content
 
 
-def generate_close_report(index_data, breadth, sectors, tech_levels, news=None):
-    """生成收盘总结战报（结构化数据，用于多组件卡片布局）"""
-    today = datetime.datetime.now().strftime("%Y-%m-%d")
-    weekday = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][datetime.datetime.now().weekday()]
+def generate_close_report(index_data, breadth, sectors, tech_levels, news=None,
+                          score=50, band='🟡黄色(关注)', position=60, factor_scores=None):
+    """生成收盘总结战报（结构化数据，用于多组件卡片布局）。
+    接入v4.1三因子评分：score总分/band档位/position目标仓位/factor_scores各因子分。"""
+    # 用北京时间（GitHub Actions为UTC时区）
+    bj_now = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=8)
+    today = bj_now.strftime("%Y-%m-%d")
+    weekday = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][bj_now.weekday()]
 
     sh = index_data.get("上证指数", {"close": 0, "change_pct": 0})
     title = "A股大盘每日战报"
-    subtitle = f"{today} {weekday} · 收盘总结 · 数据截至当日收盘"
+    subtitle = f"{today} {weekday} · 14:30盘中实时 · 数据截至当前"
 
-    # 状态判断
-    if sh["change_pct"] < -1:
-        status = "「警戒 Alert」"
+    # 卡片颜色跟随预警档位：橙/红档→red(警戒)，绿/黄档→green(正常)
+    if score >= 51:
         template = "red"
-    elif sh["change_pct"] > 1:
-        status = "「积极 Active」"
-        template = "green"
+        status = "「警戒 Alert」"
     else:
-        status = "「中性 Neutral」"
-        template = "blue"
+        template = "green"
+        status = "「正常 Normal」"
 
     # 板块信息（涨红跌绿）
     top_text = "、".join([f"{n}({color_pct(v, 1)})" for n, v in sectors.get("top", [])[:3]]) or "待更新"
@@ -822,12 +823,24 @@ def generate_close_report(index_data, breadth, sectors, tech_levels, news=None):
     elif rotation_state == "防御占优（资金避险）":
         historical_ref = "历史规律：防御板块占优通常预示市场风险偏好下降，短期调整压力较大"
 
-    model_conclusion = f"""📊 **趋势状态**：{trend_state}
+    # v4.1三因子评分明细
+    if factor_scores:
+        factor_detail = (f"趋势{factor_scores.get('趋势', 0)}/40 · "
+                         f"动量{factor_scores.get('动量', 0)}/30 · "
+                         f"波动{factor_scores.get('波动', 0)}/30")
+    else:
+        factor_detail = "待补充"
+
+    model_conclusion = f"""🧮 **尾盘预警评分（v4.1三因子）**
+**总分 {score}/100 · 档位 {band} · 目标仓位 {position}%**
+因子明细：{factor_detail}
+
+📊 **趋势状态**：{trend_state}
 📈 **量能状态**：{volume_state}（{amount_yi:.0f}亿）
 🎯 **市场宽度**：{breadth_state}（上涨占比{up_ratio*100:.0f}%）
 🔄 **板块轮动**：{rotation_state}
 
-**模型参考方向**：{model_direction}（经验概率{model_prob}）
+**规律参考方向**：{model_direction}（经验概率{model_prob}）
 **历史规律参考**：{historical_ref or '当前组合无显著历史规律，需结合实时盘面判断'}
 **操作参考**：{model_advice}
 
@@ -1146,6 +1159,8 @@ def main():
     parser = argparse.ArgumentParser(description="A股大盘每日战报云端推送")
     parser.add_argument("--period", choices=["morning", "midday", "close"], default="close",
                         help="推送时段: morning(开盘前)/midday(盘中)/close(收盘)")
+    parser.add_argument("--force", action="store_true",
+                        help="手动强制运行，绕过交易日历校验（用于手动重跑/测试）")
     args = parser.parse_args()
 
     # 获取Webhook
@@ -1154,11 +1169,13 @@ def main():
         print("❌ 错误: 未设置FEISHU_WEBHOOK环境变量")
         sys.exit(1)
 
-    # 交易日校验：非交易日（周末/法定节假日）直接退出，不推送
+    # 交易日校验：非交易日（周末/法定节假日）直接退出，不推送（--force可绕过）
     trading, today_str = is_trading_day()
-    if not trading:
+    if not trading and not args.force:
         print(f"📴 {today_str} 非A股交易日（周末/节假日），跳过推送")
         sys.exit(0)
+    if not trading and args.force:
+        print(f"⚠️ {today_str} 非交易日，但使用--force强制运行（数据可能为最近交易日缓存）")
 
     print(f"📡 开始采集数据 (日期: {today_str}, 时段: {args.period})...")
 
