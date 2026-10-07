@@ -679,6 +679,20 @@ def generate_midday_report(index_data, breadth, sectors, score=50, band='🟡黄
     return title, subtitle, template, content
 
 
+# ============================================================
+# 周度展望（每周日更新一次，由人工/周度预测任务维护）
+# ============================================================
+WEEKLY_OUTLOOK = (
+    "**本周（10/8–10/12）方向：偏震荡，区间约 3800–3920**\n"
+    "**历史规律**：近5年国庆后首日上证平均 +0.90%（3/5上涨），但5日累计平均 -0.45%、涨跌各半，无显著季节性单边。\n"
+    "**利多**：国内政策托底（7/30政治局定调\"加大逆周期调节\"、9/29央行降PSL利率至1.5%）；假期美股纳指创历史新高。\n"
+    "**利空**：美联储9月刚加息、12月仍存加息预期；假期尾段外围转弱（欧股普跌、纳指期货-0.66%、10年美债收益率上行约14bp）；节前A股地量（约1.44万亿，14个月新低）。\n"
+    "**关键观察**：①量能能否重回1.6万亿以上；②3800支撑/3900压力得失；③外围是否二次走弱。\n"
+    "**倾向**：首日受外围情绪带动或小幅高开，但全周难有趋势性行情，震荡磨底为主；若外围继续走弱则回踩3800。\n"
+    "⚠️ 本展望基于历史季节性与当前环境综合判断，样本有限，不构成投资建议。"
+)
+
+
 def generate_close_report(index_data, breadth, sectors, tech_levels, news=None,
                           score=50, band='🟡黄色(关注)', position=60, factor_scores=None):
     """生成收盘总结战报（结构化数据，用于多组件卡片布局）。
@@ -869,6 +883,7 @@ def generate_close_report(index_data, breadth, sectors, tech_levels, news=None,
         "news_domestic": news_domestic,
         "news_foreign": news_foreign,
         "model_conclusion": model_conclusion,
+        "weekly_outlook": WEEKLY_OUTLOOK,
         "tomorrow_watch": "关注量能是否持续 · 关键支撑位得失 · 外围市场变化",
         "doc_link": f"[每日信息栏_{today}](https://a13cyu3qqeo.feishu.cn/drive/folder/HPxrfEmHdlsfuqdbXc9cMJy2ndc)",
         "risk_warning": "本战报仅用于研究与模型校准，不构成投资建议。",
@@ -1075,6 +1090,14 @@ def send_to_feishu_structured(webhook_url, report_data):
 
     # 13. 分隔线
     elements.append({"tag": "hr"})
+
+    # 13.5 周度展望
+    elements.append({"tag": "hr"})
+    if report_data.get("weekly_outlook"):
+        elements.append({
+            "tag": "markdown",
+            "content": f"📅 **周度展望（下周）**\n{report_data['weekly_outlook']}"
+        })
 
     # 14. 明日观察
     if report_data.get("tomorrow_watch"):
