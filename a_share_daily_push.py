@@ -672,6 +672,9 @@ def generate_midday_report(index_data, breadth, sectors, score=50, band='🟡黄
 国内：待补充
 国外：待补充
 
+📅 **周度展望（下周）**
+{WEEKLY_OUTLOOK}
+
 ---
 详细战报已归档云文档：[每日信息栏_{today}](https://a13cyu3qqeo.feishu.cn/drive/folder/HPxrfEmHdlsfuqdbXc9cMJy2ndc)
 
