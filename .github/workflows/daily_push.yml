@@ -41,9 +41,13 @@ jobs:
   midday-1430:
     if: github.event_name == 'schedule' && github.event.schedule == '30 6 * * 1-5' || github.event_name == 'workflow_dispatch' && github.event.inputs.period == 'close'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
       - name: 设置Python
         uses: actions/setup-python@v5
         with:
@@ -57,3 +61,10 @@ jobs:
           FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
         run: |
           python a_share_daily_push.py --period close
+      - name: 提交样本库更新到仓库
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add 尾盘预警样本库.csv
+          git diff --cached --quiet || git commit -m "chore: 样本库记录 $(date +%Y-%m-%d)"
+          git push

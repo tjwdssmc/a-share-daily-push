@@ -1181,6 +1181,135 @@ def is_trading_day():
 # 第四部分：主流程
 # ============================================================
 
+def record_sample_daily(index_data, breadth, score, band, position):
+    """将当日评分写入「尾盘预警样本库.csv」，保证云端样本库持续增长。
+    幂等：同一日期重复执行只更新当日字段，不重复追加行。
+    """
+    import csv as _csv
+
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "尾盘预警样本库.csv")
+    if not os.path.exists(path):
+        print("  ⚠️ 样本库文件不存在，跳过写入")
+        return False
+
+    today = datetime.date.today()
+    date_str = today.strftime("%Y-%m-%d")
+    week_str = "周" + "一二三四五六日"[today.weekday()]
+
+    sh = index_data.get("上证指数", {}) or {}
+    cyb = index_data.get("创业板指", {}) or {}
+    up = breadth.get("up_count", 0)
+    down = breadth.get("down_count", 0)
+    amt = breadth.get("total_amount", 0)
+
+    # 档位按区间命名，与既有样本一致，便于分档统计
+    if score <= 25:
+        band_tag = "🟢0-25绿色"
+    elif score <= 50:
+        band_tag = "🟡26-50黄色"
+    elif score <= 70:
+        band_tag = "🟠51-70橙色"
+    else:
+        band_tag = "🔴71-100红色"
+
+    if score <= 50:
+        direction = "偏空"
+    elif score <= 70:
+        direction = "中性"
+    else:
+        direction = "偏多"
+
+    def _num(v, nd=2):
+        try:
+            return round(float(v), nd)
+        except Exception:
+            return "待补充"
+
+    row = {
+        "日期": date_str,
+        "星期": week_str,
+        "沪指收盘价": _num(sh.get("close"), 3) if sh.get("close") else "待补充",
+        "沪指涨跌幅": _num(sh.get("change_pct")) if sh.get("close") else "待补充",
+        "创业板指收盘价": _num(cyb.get("close"), 3) if cyb.get("close") else "待补充",
+        "创业板指涨跌幅": _num(cyb.get("change_pct")) if cyb.get("close") else "待补充",
+        "D原始分": score,
+        "D调节后分": score,
+        "档位": band_tag,
+        "硬触发": "无",
+        "信号①指数背离": "待补充",
+        "信号②天量主力流出": "待补充",
+        "信号③高低切换": "待补充",
+        "信号④外部利空": "待补充",
+        "信号⑤量价背离": "待补充",
+        "O_score": "待补充",
+        "A1放量突破": "待补充",
+        "A2趋势确认": "待补充",
+        "A3情绪周期": "待补充",
+        "A4赚钱效应": "待补充",
+        "A5板块轮动": "待补充",
+        "A6龙头辨识": "待补充",
+        "O×D象限": "待补充",
+        "趋势三态": "待补充",
+        "趋势10分制": "待补充",
+        "周期阶段": "待补充",
+        "趋势调节系数": "待补充",
+        "涨跌家数比": round(up / down, 2) if down else "待补充",
+        "两市成交额(亿)": round(amt / 1e8) if amt else "待补充",
+        "涨停家数": "待补充",
+        "跌停家数": "待补充",
+        "连板高度": "待补充",
+        "炸板率": "待补充",
+        "新高新低比": "待补充",
+        "250日线上方占比": "待补充",
+        "后1日涨跌幅": "待回填",
+        "后5日涨跌幅": "待回填",
+        "后10日涨跌幅": "待回填",
+        "后续最大跌幅": "待回填",
+        "是否显著下跌": "待回填",
+        "方向预测": direction,
+        "预测是否正确": "待补充",
+        "进攻信号命中率核对": "待补充",
+        "O×D象限后续走势核对": "待补充",
+        "趋势状态判断准确性核对": "待补充",
+        "偏差类型": "",
+        "偏差原因分析": "云端自动记录（14:30盘中评分）",
+    }
+
+    try:
+        with open(path, "r", encoding="utf-8-sig", newline="") as f:
+            reader = _csv.DictReader(f)
+            fieldnames = reader.fieldnames or list(row.keys())
+            rows = list(reader)
+    except Exception as e:
+        print(f"  ⚠️ 读取样本库失败: {e}")
+        return False
+
+    updated = False
+    for r in rows:
+        if (r.get("日期") or "").strip() == date_str:
+            for k in ("D原始分", "D调节后分", "档位", "硬触发", "涨跌家数比", "两市成交额(亿)",
+                      "方向预测", "沪指收盘价", "沪指涨跌幅", "创业板指收盘价", "创业板指涨跌幅"):
+                if row.get(k) not in (None, ""):
+                    r[k] = row[k]
+            updated = True
+            break
+
+    if not updated:
+        rows.append({k: row.get(k, "") for k in fieldnames})
+
+    try:
+        with open(path, "w", encoding="utf-8-sig", newline="") as f:
+            writer = _csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+    except Exception as e:
+        print(f"  ⚠️ 写入样本库失败: {e}")
+        return False
+
+    print(f"  📒 样本库已{'更新' if updated else '追加'}: {date_str} {score}分 {band_tag}（累计 {len(rows)} 行）")
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(description="A股大盘每日战报云端推送")
     parser.add_argument("--period", choices=["morning", "midday", "close"], default="close",
@@ -1247,6 +1376,13 @@ def main():
         title, subtitle, template, content, report_data = generate_close_report(index_data, breadth, sectors, tech_levels, news, score, band, position, factor_scores)
         print("🚀 推送到飞书(多组件卡片)...")
         success = send_to_feishu_structured(webhook_url, report_data)
+
+    # 收盘战报成功后写入样本库（交易日才写，节假日 --force 测试不污染样本）
+    if success and args.period == "close" and trading:
+        try:
+            record_sample_daily(index_data, breadth, score, band, position)
+        except Exception as e:
+            print(f"  ⚠️ 样本库写入异常（不影响推送）: {e}")
 
     if success:
         print("✅ 全部完成!")
