@@ -128,7 +128,7 @@ def push(text):
     if not WEBHOOK:
         print("[push] 未配置 FEISHU_WEBHOOK，跳过推送")
         return
-    payload = {"msg_type": "text", "content": {"text": text[:3800]}}
+    payload = {"msg_type": "text", "content": {"text": ("A股大盘战报推送\n" + text)[:3800]}}
     r = requests.post(WEBHOOK, json=payload, timeout=15)
     print(f"[push] webhook 响应 {r.status_code}: {r.text[:200]}")
 
