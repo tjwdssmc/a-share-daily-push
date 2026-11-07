@@ -1,0 +1,38 @@
+name: A股周日周一预测（云端）
+# 触发方式：定时（北京时间周日14:30 = UTC 06:30）+ 手动
+on:
+  schedule:
+    - cron: '30 6 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  weekly-predict:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: 设置Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: 生成周一预测并推送
+        env:
+          FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
+        run: |
+          python a_share_weekly_predict.py
+      - name: 提交周预测样本库
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add 周预测样本库.csv
+          git diff --cached --quiet || git commit -m "chore: 周预测样本更新 $(date +%Y-%m-%d)"
+          git push

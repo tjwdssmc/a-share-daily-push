@@ -1,0 +1,38 @@
+name: A股尾盘模型周五校准（云端）
+# 触发方式：定时（北京时间周五17:00 = UTC 09:00）+ 手动
+on:
+  schedule:
+    - cron: '0 9 * * 5'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  model-calibrate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: 设置Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: 运行模型校准
+        env:
+          FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
+        run: |
+          python a_share_calibrate.py
+      - name: 提交校准日志
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add 模型校准日志.md
+          git diff --cached --quiet || git commit -m "chore: 周五模型校准 $(date +%Y-%m-%d)"
+          git push
